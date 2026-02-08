@@ -1,0 +1,26 @@
+name: DeepBacbo 24h
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Reinicia a cada 6 horas automaticamente
+  workflow_dispatch:      # Botão para ligar manualmente no site
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar Bibliotecas
+        run: pip install requests pyTelegramBotAPI
+
+      - name: Iniciar Bot
+        run: python DeepBacBo_telegram.py
+        env:
+          PYTHONUNBUFFERED: 1
