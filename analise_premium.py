@@ -9,7 +9,7 @@ class AnalisePremium:
         self.padroes_ouro = self._carregar_padroes_ouro()
 
         # --- CONFIGURAÇÕES DE ALTA ASSERTIVIDADE (24H) ---
-        self.ASSERTIVIDADE_MINIMA = 80.0  # Só entra se a chance for maior que 90%
+        self.ASSERTIVIDADE_MINIMA = 90.0  # Só entra se a chance for maior que 90%
         self.AMOSTRA_MINIMA = 5           # O padrão precisa ter aparecido pelo menos 8 vezes na história
         self.TAMANHO_MAX_PADRAO = 5      # Analisa padrões mais longos e complexos
         self.EVITAR_SURF = True           # Não aposta contra sequências maiores que 5
@@ -127,7 +127,7 @@ class AnalisePremium:
                 # --- FILTRO 1: SG deve ser dominante ---
                 p_sg = (stats['sg'] / total_encontrado) * 100
                 p_g1 = (stats['g1'] / total_encontrado) * 100
-                if p_sg < 20.0: # Se depende muito de Gale, descarta
+                if p_sg < 70.0: # Se depende muito de Gale, descarta
                     continue
 
                 # --- FILTRO 2: Recência (O padrão morreu?) ---
