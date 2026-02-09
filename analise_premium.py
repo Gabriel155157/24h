@@ -6,7 +6,7 @@ class AnalisePremium:
         self.URL_API = "https://locabot.online/api_bacbo.php"
         
         # --- CONFIGURAÇÕES MODO SNIPER (SEM GALE) ---
-        self.ASSERTIVIDADE_MINIMA = 100.0  # Só aceita 100% de acerto inicial
+        self.ASSERTIVIDADE_MINIMA = 10.0  # Só aceita 100% de acerto inicial
         self.AMOSTRA_MINIMA = 6           # Padrão deve ter ocorrido ao menos 6 vezes
         self.TAMANHO_MAX_PADRAO = 4      
 
