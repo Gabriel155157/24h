@@ -3,120 +3,77 @@ import os
 
 class AnalisePremium:
     def __init__(self):
-        self.historico_completo = []
         self.URL_API = "https://locabot.online/api_bacbo.php"
-        self.arquivo_log = "padroes_vencedores.txt"
-        self.padroes_ouro = self._carregar_padroes_ouro()
-
-        # --- CONFIGURAÇÕES DE ALTA ASSERTIVIDADE ---
-        self.ASSERTIVIDADE_MINIMA = 80.0
-        self.AMOSTRA_MINIMA = 5
-        self.TAMANHO_MAX_PADRAO = 5
-        self.EVITAR_SURF = True
-
-    def _carregar_padroes_ouro(self):
-        if not os.path.exists(self.arquivo_log): return set()
-        with open(self.arquivo_log, "r") as f:
-            return set(linha.strip() for if linha.strip())
-
-    def _salvar_padrao_ouro(self, txt_gatilho):
-        if txt_gatilho not in self.padroes_ouro:
-            self.padroes_ouro.add(txt_gatilho)
-            with open(self.arquivo_log, "a") as f:
-                f.write(f"{txt_gatilho}\n")
-            return True
-        return False
-
-    def gerar_barra(self, percentual):
-        blocos = int(percentual / 10)
-        return "█" * blocos + "░" * (10 - blocos)
+        self.historico_completo = []
+        
+        # --- PARÂMETROS DE IA ANALYST ---
+        self.ASSERTIVIDADE_ALVO = 95.0  # Busca sinais de 95% a 100%
+        self.MIN_OCORRENCIAS = 7        # O padrão deve ter se repetido 7x+
+        self.MAX_LOOKBACK = 100         # Analisa as últimas 100 rodadas para peso
+        self.TAMANHO_PADRAO = [3, 4, 5, 6] # Analisa múltiplos tamanhos de sequência
 
     def atualizar_banco(self):
         try:
             response = requests.get(self.URL_API, timeout=5)
-            if response.status_code != 200: return
-            data = response.json()
-            if not data: return
-            
-            self.historico_completo = []
-            for x in data:
-                # NORMALIZAÇÃO BLINDADA: Remove espaços e ignora maiúsculas
-                tipo_bruto = str(x.get('pedra', '')).strip().lower()
-                
-                if tipo_bruto == 'player': cor = 'P'
-                elif tipo_bruto == 'banker': cor = 'B'
-                elif tipo_bruto == 'tie': cor = 'T'
-                else: continue # Se o dado for inválido, pula a rodada em vez de inventar empate
-                
-                num = int(x.get('numero', 0))
-                self.historico_completo.append((cor, num))
-        except Exception as e:
-            print(f"Erro banco: {e}")
+            if response.status_code == 200:
+                data = response.json()
+                self.historico_completo = []
+                for x in data:
+                    p = str(x.get('pedra', '')).strip().lower()
+                    cor = 'P' if p == 'player' else 'B' if p == 'banker' else 'T' if p == 'tie' else None
+                    if cor: self.historico_completo.append(cor)
+        except: pass
 
     def prever(self):
         if len(self.historico_completo) < 50: return None
         
-        # ANTI-SURF
-        ultima_cor = self.historico_completo[0][0]
-        repeticoes = 0
-        for i in range(len(self.historico_completo)):
-            if self.historico_completo[i][0] == ultima_cor: repeticoes += 1
-            else: break
-        if repeticoes >= 5: return None
-
         melhor_sinal = None
-        maior_prob = 0
-
-        for tamanho in range(2, self.TAMANHO_MAX_PADRAO + 1):
-            padrao_atual = self.historico_completo[:tamanho]
-            txt_gatilho = "-".join([f"{c}{n}" for c, n in padrao_atual[::-1]])
+        
+        for n in self.TAMANHO_PADRAO:
+            padrao_atual = self.historico_completo[:n]
             
-            total = 0
-            stats_p = {'sg': 0, 'g1': 0}
-            stats_b = {'sg': 0, 'g1': 0}
-            ties = 0
-            ultimos_res = []
+            # Análise de Probabilidade Histórica
+            ocorrencias = 0
+            vitorias_p = 0
+            vitorias_b = 0
+            empates = 0
+            recencia_check = [] # Verifica se o padrão ainda está ganhando agora
 
-            for i in range(1, len(self.historico_completo) - tamanho - 2):
-                if self.historico_completo[i : i + tamanho] == padrao_atual:
-                    total += 1
-                    res = self.historico_completo[i-1][0]
-                    gale = self.historico_completo[i-2][0] if i >= 2 else None
+            # Varredura do Mercado
+            for i in range(1, len(self.historico_completo) - n - 1):
+                if self.historico_completo[i : i+n] == padrao_atual:
+                    ocorrencias += 1
+                    proximo = self.historico_completo[i-1]
                     
-                    if res in ['P', 'T']: stats_p['sg'] += 1
-                    elif gale in ['P', 'T']: stats_p['g1'] += 1
+                    if proximo in ['P', 'T']: vitorias_p += 1
+                    if proximo in ['B', 'T']: vitorias_b += 1
+                    if proximo == 'T': empates += 1
                     
-                    if res in ['B', 'T']: stats_b['sg'] += 1
-                    elif gale in ['B', 'T']: stats_b['g1'] += 1
-                    
-                    if res == 'T': ties += 1
-                    ultimos_res.append('P' if res in ['P','T'] or (res not in ['P','T'] and gale in ['P','T']) else 'B')
+                    # Salva os últimos 3 resultados desse padrão
+                    if len(recencia_check) < 3:
+                        res_final = 'P' if proximo in ['P', 'T'] else 'B'
+                        recencia_check.append(res_final)
 
-            if total >= self.AMOSTRA_MINIMA:
-                prob_p = ((stats_p['sg'] + stats_p['g1']) / total) * 100
-                prob_b = ((stats_b['sg'] + stats_b['g1']) / total) * 100
+            if ocorrencias >= self.MIN_OCORRENCIAS:
+                prob_p = (vitorias_p / ocorrencias) * 100
+                prob_b = (vitorias_b / ocorrencias) * 100
                 
-                if prob_p >= self.ASSERTIVIDADE_MINIMA and prob_p > prob_b:
-                    previsao, prob_f, stats = 'P', prob_p, stats_p
-                elif prob_b >= self.ASSERTIVIDADE_MINIMA and prob_b > prob_p:
-                    previsao, prob_f, stats = 'B', prob_b, stats_b
+                # Critério Sniper: 95% ou 100%
+                if prob_p >= self.ASSERTIVIDADE_ALVO:
+                    previsao, final_prob = 'P', prob_p
+                elif prob_b >= self.ASSERTIVIDADE_ALVO:
+                    previsao, final_prob = 'B', prob_b
                 else: continue
 
-                p_sg = (stats['sg'] / total) * 100
-                if p_sg < 20.0: continue
-                if len(ultimos_res) >= 2 and (ultimos_res[0] != previsao and ultimos_res[1] != previsao): continue
+                # FILTRO DE IA: Se o padrão perdeu nas últimas 2 vezes que apareceu, ele está "morto"
+                if len(recencia_check) >= 2:
+                    if recencia_check.count(previsao) < 1: continue
 
-                if prob_f > maior_prob:
-                    maior_prob = prob_f
-                    is_sniper = (p_sg >= 100.0 and total >= 6)
-                    p_tie = (ties / total) * 100
-                    
-                    melhor_sinal = {
-                        "previsao_genai": previsao,
-                        "probabilidade_genai": round(prob_f, 1),
-                        "gatilho": txt_gatilho,
-                        "grafico": f"{'💎 SNIPER' if is_sniper else '🔥 FORTE'}\nSG: {self.gerar_barra(p_sg)} {p_sg:.0f}%\nG1: {self.gerar_barra((stats['g1']/total)*100)} {(stats['g1']/total)*100:.0f}%",
-                        "dica_empate": f"COBRIR EMPATE ({p_tie:.0f}%)",
-                        "is_sniper": is_sniper
-                    }
-        return melhor_sinal
+                return {
+                    "cor": previsao,
+                    "prob": round(final_prob, 1),
+                    "amostra": ocorrencias,
+                    "empate": round((empates / ocorrencias) * 100, 1),
+                    "gatilho": "-".join(padrao_atual[::-1])
+                }
+        return None
