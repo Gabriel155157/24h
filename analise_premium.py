@@ -8,9 +8,9 @@ class AnalisePremium:
         
         # --- PARÂMETROS DE IA ANALYST ---
         self.ASSERTIVIDADE_ALVO = 95.0  # Busca sinais de 95% a 100%
-        self.MIN_OCORRENCIAS = 7        # O padrão deve ter se repetido 7x+
+        self.MIN_OCORRENCIAS = 8        # O padrão deve ter se repetido 7x+
         self.MAX_LOOKBACK = 100         # Analisa as últimas 100 rodadas para peso
-        self.TAMANHO_PADRAO = [3, 4, 5, 6] # Analisa múltiplos tamanhos de sequência
+        self.TAMANHO_PADRAO = [2, 4, 6, 8] # Analisa múltiplos tamanhos de sequência
 
     def atualizar_banco(self):
         try:
