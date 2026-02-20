@@ -1,136 +1,113 @@
 import requests
 import time
 import telebot
-import threading
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 from analise_premium import AnalisePremium
 
-# --- CONFIGURAÇÕES DO BOT ---
-# Substitua pelos seus dados reais
+# --- CONFIGURAÇÕES ---
 TOKEN = "7088974821:AAFx0xVtzEnbHleQU7J66wEfVmPtghnRHs0"
 CHAT_ID = "-1002270247449"
 LINK_AFILIADO = "https://go.aff.esportiva.bet/sm9dwy54"
 
 bot = telebot.TeleBot(TOKEN)
+ia = AnalisePremium()
 
-class MonitorBacbo:
+class ContadorMensal:
     def __init__(self):
-        self.ia = AnalisePremium()
-        self.ultimo_id = None
+        self.arquivo = "placar_mensal.txt"
         self.wins = 0
         self.losses = 0
-        self.sg = 0
-        self.g1 = 0
+        self.data_reset = datetime.now()
+        self.carregar()
+
+    def carregar(self):
+        if os.path.exists(self.arquivo):
+            with open(self.arquivo, "r") as f:
+                conteudo = f.read().split(",")
+                if len(conteudo) == 3:
+                    self.wins = int(conteudo[0])
+                    self.losses = int(conteudo[1])
+                    self.data_reset = datetime.strptime(conteudo[2], "%Y-%m-%d")
+            
+            # VERIFICA SE PASSARAM 30 DIAS
+            if datetime.now() >= self.data_reset + timedelta(days=30):
+                self.resetar()
+        else:
+            self.salvar()
+
+    def salvar(self):
+        with open(self.arquivo, "w") as f:
+            f.write(f"{self.wins},{self.losses},{self.data_reset.strftime('%Y-%m-%d')}")
+
+    def resetar(self):
+        self.wins = 0
+        self.losses = 0
+        self.data_reset = datetime.now()
+        self.salvar()
+
+class MonitorSniper30Dias:
+    def __init__(self):
+        self.placar = ContadorMensal()
+        self.ultimo_id = None
         self.em_alerta = False
         self.previsao_atual = None
-        self.gale_ativo = False
-        self.inicio_sessao = datetime.now().strftime("%d/%m %H:%M")
 
-    def enviar_msg(self, texto, markup=None):
-        try:
-            bot.send_message(CHAT_ID, texto, parse_mode="Markdown", reply_markup=markup, disable_web_page_preview=True)
-        except Exception as e:
-            print(f"Erro Telegram: {e}")
+    def enviar(self, txt, m=None):
+        try: bot.send_message(CHAT_ID, txt, parse_mode="Markdown", reply_markup=m)
+        except: pass
 
-    def monitorar(self):
-        print("🚀 Monitorando via API para Telegram...")
-        self.enviar_msg(f"✅ *DeepBacbo IA ONLINE*\n\n🕒 *Início:* {self.inicio_sessao}\n📟 *Status:* Monitorando 24h via GitHub\n\n_Aguardando padrão de alta assertividade..._")
-
+    def rodar(self):
+        proximo_reset = (self.placar.data_reset + timedelta(days=30)).strftime("%d/%m/%y")
+        self.enviar(f"💎 *SNIPER 30 DIAS ONLINE*\n📊 Placar acumulado até: {proximo_reset}")
+        
         while True:
             try:
-                self.ia.atualizar_banco()
-                historico = self.ia.historico_completo
-                
-                if not historico:
-                    time.sleep(5)
-                    continue
+                ia.atualizar_banco()
+                hist = ia.historico_completo
+                if not hist: continue
 
-                # ID único baseado na última pedra (Cor + Número)
-                id_rodada_atual = f"{historico[0][0]}{historico[0][1]}"
-
-                if id_rodada_atual != self.ultimo_id:
-                    resultado_cor = historico[0][0] # P, B ou T
-                    
+                id_atual = f"{hist[0]}"
+                if id_atual != self.ultimo_id:
                     if self.em_alerta:
-                        self.processar_resultado(resultado_cor)
-
-                    self.ultimo_id = id_rodada_atual
+                        self.verificar_resultado(hist[0])
                     
+                    self.ultimo_id = id_atual
                     if not self.em_alerta:
-                        previsao = self.ia.prever()
-                        if previsao:
-                            self.enviar_sinal(previsao)
-
+                        p = ia.prever()
+                        if p: self.disparar_sinal(p)
                 time.sleep(3)
-            except Exception as e:
-                print(f"Erro no loop: {e}")
-                time.sleep(10)
+            except: time.sleep(10)
 
-    def enviar_sinal(self, dados):
+    def disparar_sinal(self, d):
         self.em_alerta = True
-        self.previsao_atual = dados
-        cor_emoji = "🔵 PLAYER" if dados['previsao_genai'] == 'P' else "🔴 BANKER"
+        self.previsao_atual = d
+        cor = "🔵 PLAYER" if d['cor'] == 'P' else "🔴 BANKER"
+        m = telebot.types.InlineKeyboardMarkup()
+        m.add(telebot.types.InlineKeyboardButton("🎰 ENTRAR NO JOGO", url=LINK_AFILIADO))
         
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(telebot.types.InlineKeyboardButton("🎰 JOGAR AGORA", url=LINK_AFILIADO))
+        msg = (f"🎯 *SINAL SNIPER CONFIRMADO*\n━━━━━━━━━━━━━━━━━━━━\n"
+               f"🎰 Apostar: *{cor}*\n📊 Confiança: `{d['prob']}%`\n"
+               f"🚫 *ENTRADA ÚNICA (SEM GALE)*\n━━━━━━━━━━━━━━━━━━━━")
+        self.enviar(msg, m)
 
-        msg = (
-            f"🎯 *SINAL CONFIRMADO*\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎰 Jogo: *Bac Bo*\n"
-            f"🎯 Entrada: *{cor_emoji}*\n"
-            f"📊 Confiança: `{dados['probabilidade_genai']}%`\n"
-            f"⚖️ {dados['dica_empate']}\n"
-            f"🔄 Proteção: Até G1\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ *Aguarde o resultado...*"
-        )
-        self.enviar_msg(msg, markup)
-
-    def processar_resultado(self, resultado):
-        alvo = self.previsao_atual['previsao_genai']
-        
-        # Vitória no Alvo ou Empate (Tie)
-        if resultado == alvo or resultado == 'T':
-            if self.gale_ativo:
-                self.g1 += 1
-                tipo = "GREEN NO G1! 🔄"
-            else:
-                self.sg += 1
-                tipo = "GREEN DE PRIMEIRA! 🔥"
-            
-            self.wins += 1
-            self.finalizar_ciclo(f"✅ *{tipo}*\nResultado: {resultado}")
-        
-        elif not self.gale_ativo:
-            self.gale_ativo = True
-            self.enviar_msg("🔄 *Entrando no GALE 1...*")
-        
+    def verificar_resultado(self, res):
+        alvo = self.previsao_atual['cor']
+        if res == alvo or res == 'T':
+            self.placar.wins += 1
+            res_txt = "✅ *GREEN SNIPER!*"
         else:
-            self.losses += 1
-            self.finalizar_ciclo(f"❌ *RED CONFIRMADO*\nResultado: {resultado}")
-
-    def finalizar_ciclo(self, status):
-        total = self.wins + self.losses
-        taxa = (self.wins / total * 100) if total > 0 else 0
-        msg = (
-            f"{status}\n\n"
-            f"📊 *PLACAR ATUAL:*\n"
-            f"✅ Wins: {self.wins} (SG: {self.sg} | G1: {self.g1})\n"
-            f"❌ Reds: {self.losses}\n"
-            f"📈 Taxa: `{taxa:.1f}%`"
-        )
-        self.enviar_msg(msg)
-        self.em_alerta, self.gale_ativo, self.previsao_atual = False, False, None
-
-# --- COMANDO DE PLACAR ---
-instancia = MonitorBacbo()
-@bot.message_handler(commands=['placar'])
-def cmd_placar(message):
-    total = instancia.wins + instancia.losses
-    taxa = (instancia.wins / total * 100) if total > 0 else 0
-    bot.reply_to(message, f"📊 *PLACAR:* {instancia.wins}W - {instancia.losses}L\n📈 *Taxa:* {taxa:.1f}%")
+            self.placar.losses += 1
+            res_txt = "❌ *RED*"
+        
+        self.placar.salvar()
+        total = self.placar.wins + self.placar.losses
+        taxa = (self.placar.wins / total) * 100
+        
+        msg = (f"{res_txt}\n\n📊 *RANKING MENSAL:* `{self.placar.wins}W - {self.placar.losses}L`\n"
+               f"📈 *TAXA 30 DIAS:* `{taxa:.1f}%`")
+        self.enviar(msg)
+        self.em_alerta = False
 
 if __name__ == "__main__":
-    threading.Thread(target=instancia.monitorar, daemon=True).start()
-    bot.infinity_polling()
+    MonitorSniper30Dias().rodar()
